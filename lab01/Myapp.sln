@@ -1,25 +1,302 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.9.34622.214
-MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Myapp", "Myapp\Myapp.csproj", "{81B31E20-730D-42F7-BAB6-2BE6896B93C7}"
-EndProject
-Global
-	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|Any CPU = Debug|Any CPU
-		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{81B31E20-730D-42F7-BAB6-2BE6896B93C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{81B31E20-730D-42F7-BAB6-2BE6896B93C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{81B31E20-730D-42F7-BAB6-2BE6896B93C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{81B31E20-730D-42F7-BAB6-2BE6896B93C7}.Release|Any CPU.Build.0 = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {41362535-7782-485D-8FE0-D11E0F883FEC}
-	EndGlobalSection
-EndGlobal
+using System;
+
+// Базовый класс для всех видов транспорта
+public abstract class Transport
+{
+    public int MaxWeight { get; protected set; }
+    public int CountWheel { get; protected set; }
+    public int PassengerPlace { get; protected set; }
+
+    // Абстрактные методы которые должны реализовать наследники
+    public abstract string Move();
+    public abstract string GetInfo();
+    public abstract bool CanHandle(int weight, int distance, int passengers);
+}
+
+// Класс Велосипед
+public class Bicycle : Transport
+{
+    // Уникальные свойства велосипеда
+    public int CountSpeed { get; private set; }
+
+    public Bicycle()
+    {
+        // Задаем базовые характеристики
+        MaxWeight = 100;
+        CountWheel = 2;
+        PassengerPlace = 1;
+        CountSpeed = 15;
+    }
+
+    public override string Move()
+    {
+        return $"Велосипед двигается со скоростью {CountSpeed} км/ч";
+    }
+
+    public override string GetInfo()
+    {
+        return $"Велосипед: Макс. вес - {MaxWeight}кг, Места - {PassengerPlace}, Скорость - {CountSpeed} км/ч";
+    }
+
+    // Проверяет может ли велосипед справиться с задачей
+    public override bool CanHandle(int weight, int distance, int passengers)
+    {
+        return weight <= 50 && distance <= 20 && passengers <= 1;
+    }
+}
+
+// Класс Автомобиль
+public class Car : Transport
+{
+    // Уникальные свойства автомобиля
+    public int HorsePw { get; private set; }
+
+    public Car()
+    {
+        MaxWeight = 2000;
+        CountWheel = 4;
+        PassengerPlace = 5;
+        HorsePw = 150;
+    }
+
+    public override string Move()
+    {
+        return $"Автомобиль двигается мощностью {HorsePw} л.с.";
+    }
+
+    public override string GetInfo()
+    {
+        return $"Автомобиль: Макс. вес - {MaxWeight}кг, Места - {PassengerPlace}, Мощность - {HorsePw} л.с.";
+    }
+
+    public override bool CanHandle(int weight, int distance, int passengers)
+    {
+        return weight <= 1500 && passengers <= 5;
+    }
+}
+
+// Класс Дрон
+public class Drone : Transport
+{
+    // Уникальные свойства дрона
+    public bool CanFly { get; private set; }
+    public int MaxAltitude { get; private set; }
+
+    public Drone()
+    {
+        MaxWeight = 10;
+        CountWheel = 0;
+        PassengerPlace = 0;
+        CanFly = true;
+        MaxAltitude = 500;
+    }
+
+    public override string Move()
+    {
+        return $"Дрон летит на высоте до {MaxAltitude}м";
+    }
+
+    public override string GetInfo()
+    {
+        return $"Дрон: Макс. вес - {MaxWeight}кг, Полет - {CanFly}, Макс. высота - {MaxAltitude}м";
+    }
+
+    public override bool CanHandle(int weight, int distance, int passengers)
+    {
+        return weight <= 5 && distance <= 10 && passengers == 0;
+    }
+}
+
+// Абстрактный создатель транспорта
+public abstract class Creator
+{
+    // Защищенный метод создания (как на диаграмме #)
+    protected abstract Transport CreateTransport(int weight, int distance, int passengers);
+
+    // Публичный метод-обертка для вызова из других классов
+    public Transport CreateTransportPublic(int weight, int distance, int passengers)
+    {
+        return CreateTransport(weight, distance, passengers);
+    }
+
+    // Публичный метод для доступа из UserTab
+    public Transport GetTransport(int weight, int distance, int passengers)
+    {
+        return CreateTransport(weight, distance, passengers);
+    }
+}
+
+// Создатель велосипеда
+public class BicycleCreator : Creator
+{
+    protected override Transport CreateTransport(int weight, int distance, int passengers)
+    {
+        return new Bicycle();
+    }
+}
+
+// Создатель автомобиля
+public class CarCreator : Creator
+{
+    protected override Transport CreateTransport(int weight, int distance, int passengers)
+    {
+        return new Car();
+    }
+}
+
+// Создатель дрона
+public class DroneCreator : Creator
+{
+    protected override Transport CreateTransport(int weight, int distance, int passengers)
+    {
+        return new Drone();
+    }
+}
+
+// Фабрика которая выбирает какой транспорт создать по критериям
+public class TransportFactory : Creator
+{
+    private BicycleCreator _bicycleCreator = new BicycleCreator();
+    private CarCreator _carCreator = new CarCreator();
+    private DroneCreator _droneCreator = new DroneCreator();
+
+    protected override Transport CreateTransport(int weight, int distance, int passengers)
+    {
+        Console.WriteLine($"\n=== Анализ критериев ===");
+        Console.WriteLine($"Вес груза: {weight} кг");
+        Console.WriteLine($"Расстояние: {distance} км");
+        Console.WriteLine($"Пассажиров: {passengers}");
+
+        // Логика выбора транспорта
+        if (weight <= 5 && distance <= 10 && passengers == 0)
+        {
+            Console.WriteLine("Выбран: Дрон");
+            return _droneCreator.CreateTransportPublic(weight, distance, passengers);
+        }
+        else if (weight <= 50 && distance <= 20 && passengers <= 1)
+        {
+            Console.WriteLine("Выбран: Велосипед");
+            return _bicycleCreator.CreateTransportPublic(weight, distance, passengers);
+        }
+        else if (weight <= 1500 && passengers <= 5)
+        {
+            Console.WriteLine("Выбран: Автомобиль");
+            return _carCreator.CreateTransportPublic(weight, distance, passengers);
+        }
+        else
+        {
+            Console.WriteLine("Нет подходящего транспорта!");
+            return null;
+        }
+    }
+}
+
+// Класс для работы с пользователем
+public class UserTab
+{
+    private Transport _currentTransport;
+    private Creator _creator;
+
+    // Свойства для отображения информации в интерфейсе
+    public int CountWheel { get; private set; }
+    public int PassengerPlace { get; private set; }
+    public int CountSpeed { get; private set; }
+    public int HorsePw { get; private set; }
+    public bool Fly { get; private set; }
+
+    public UserTab()
+    {
+        _creator = new TransportFactory();
+    }
+
+    // Метод ввода критериев и создания транспорта
+    public void InputCriteriaAndCreateTransport()
+    {
+        Console.WriteLine("=== Введите критерии доставки ===\n");
+
+        Console.Write("Вес груза (кг): ");
+        int weight = int.Parse(Console.ReadLine());
+
+        Console.Write("Расстояние (км): ");
+        int distance = int.Parse(Console.ReadLine());
+
+        Console.Write("Количество пассажиров: ");
+        int passengers = int.Parse(Console.ReadLine());
+
+        // Создаем транспорт через фабрику
+        _currentTransport = _creator.GetTransport(weight, distance, passengers);
+
+        UpdateProperties();
+    }
+
+    // Обновляем свойства интерфейса данными из транспорта
+    private void UpdateProperties()
+    {
+        if (_currentTransport != null)
+        {
+            CountWheel = _currentTransport.CountWheel;
+            PassengerPlace = _currentTransport.PassengerPlace;
+
+            if (_currentTransport is Bicycle bicycle)
+            {
+                CountSpeed = bicycle.CountSpeed;
+            }
+            else if (_currentTransport is Car car)
+            {
+                HorsePw = car.HorsePw;
+            }
+            else if (_currentTransport is Drone drone)
+            {
+                Fly = drone.CanFly;
+            }
+        }
+    }
+
+    // Показываем информацию о транспорте пользователю
+    public void UseTransport()
+    {
+        if (_currentTransport != null)
+        {
+            Console.WriteLine("\n=== Информация о выбранном транспорте ===");
+            Console.WriteLine(_currentTransport.GetInfo());
+            Console.WriteLine(_currentTransport.Move());
+
+            Console.WriteLine($"\n--- Уникальные атрибуты ---");
+            Console.WriteLine($"Колеса: {CountWheel}");
+            Console.WriteLine($"Пассажирских мест: {PassengerPlace}");
+
+            if (_currentTransport is Bicycle)
+            {
+                Console.WriteLine($"Скорость: {CountSpeed} км/ч");
+            }
+            else if (_currentTransport is Car)
+            {
+                Console.WriteLine($"Мощность: {HorsePw} л.с.");
+            }
+            else if (_currentTransport is Drone)
+            {
+                Console.WriteLine($"Может летать: {Fly}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("\nНе удалось создать транспорт для указанных критериев");
+        }
+    }
+}
+
+// Точка входа в программу
+class Program
+{
+    static void Main(string[] args)
+    {
+        UserTab userTab = new UserTab();
+
+        // Пользователь вводит данные и получает транспорт
+        userTab.InputCriteriaAndCreateTransport();
+        userTab.UseTransport();
+
+        Console.WriteLine("\nНажмите любую клавишу для выхода...");
+        Console.ReadKey();
+    }
+}
