@@ -1,27 +1,371 @@
 using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+using System.Net;
+using System.IO;
 
-// Базовый класс для всех видов транспорта
-public abstract class Transport
+// =====================================================
+// GUI: Основная форма приложения
+// =====================================================
+
+public class Form1 : Form
+{
+    private Label lblTitle;
+    private GroupBox grpCriteria;
+    private Label lblWeight;
+    private Label lblDistance;
+    private Label lblPassengers;
+    private NumericUpDown nudWeight;
+    private NumericUpDown nudDistance;
+    private NumericUpDown nudPassengers;
+    private Button btnFind;
+    private GroupBox grpResult;
+    private Label lblTransportName;
+    private Label lblInfo;
+    private Label lblMove;
+    private Label lblSpecs;
+    private PictureBox picTransport;
+    private UserTab _userTab;
+
+    public Form1()
+    {
+        InitializeComponent();
+        _userTab = new UserTab();
+        SetupTooltips();
+
+        // Включаем двойную буферизацию для плавной отрисовки
+        this.SetStyle(ControlStyles.DoubleBuffer |
+                      ControlStyles.UserPaint |
+                      ControlStyles.AllPaintingInWmPaint, true);
+        this.UpdateStyles();
+    }
+
+    private void SetupTooltips()
+    {
+        ToolTip tt = new ToolTip();
+        tt.SetToolTip(nudWeight, "Максимальный вес груза в килограммах");
+        tt.SetToolTip(nudDistance, "Расстояние доставки в километрах");
+        tt.SetToolTip(nudPassengers, "Количество пассажиров (0 для дрона)");
+    }
+
+    private void btnFind_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            int weight = (int)nudWeight.Value;
+            int distance = (int)nudDistance.Value;
+            int passengers = (int)nudPassengers.Value;
+
+            var transport = _userTab.GetSelectedTransport(weight, distance, passengers);
+
+            if (transport != null)
+            {
+                DisplaySuccess(transport);
+            }
+            else
+            {
+                DisplayError();
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка: {ex.Message}", "Внимание",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private void DisplaySuccess(Transport t)
+    {
+        grpResult.BackColor = Color.White;
+        lblTransportName.Text = GetTransportTitle(t);
+        picTransport.Image = GetTransportIcon(t);
+        lblInfo.Text = t.GetInfo();
+        lblMove.Text = "> " + t.Move();
+
+        string specs = $"- Колёса: {t.CountWheel}\n" +
+                      $"- Места: {t.PassengerPlace}";
+
+        if (t is Bicycle)
+            specs += $"\n- Скорость: {_userTab.GetCountSpeed()} км/ч";
+        else if (t is Car)
+            specs += $"\n- Мощность: {_userTab.GetHorsePw()} л.с.";
+        else if (t is Drone)
+            specs += $"\n- Полёт: {_userTab.GetCanFly()} (до {_userTab.GetMaxAltitude()}м)";
+
+        lblSpecs.Text = specs;
+    }
+
+    private void DisplayError()
+    {
+        grpResult.BackColor = Color.FromArgb(255, 240, 240);
+        lblTransportName.Text = "Не найдено";
+        lblTransportName.ForeColor = Color.Red;
+        picTransport.Image = CreatePlaceholderImage();
+        lblInfo.Text = "Для указанных параметров нет подходящего транспорта.";
+        lblMove.Text = "Попробуйте уменьшить вес, расстояние или количество пассажиров.";
+        lblSpecs.Text = "";
+    }
+
+    private string GetTransportTitle(Transport t)
+    {
+        if (t is Bicycle) return "Велосипед";
+        if (t is Car) return "Автомобиль";
+        if (t is Drone) return "Дрон";
+        return "Транспорт";
+    }
+
+    private Image GetTransportIcon(Transport t)
+    {
+        try
+        {
+            if (t is Bicycle)
+            {
+                return LoadImageFromUrl("https://avatars.mds.yandex.net/get-mpic/4912684/img_id6076608866905841757.jpeg/orig");
+            }
+            else if (t is Car)
+            {
+                return LoadImageFromUrl("https://avatars.mds.yandex.net/i?id=3984ae4829f64506f6c086588453c237_l-10265017-images-thumbs&n=13");
+            }
+            else if (t is Drone)
+            {
+                return LoadImageFromUrl("https://avatars.mds.yandex.net/i?id=a3257a4ee29d500bf5f9ecdd1ec2acdf15f61140-8199312-images-thumbs&n=13");
+//return LoadImageFromUrl("https://avatars.mds.yandex.net/i?id=c8af371cebc95fe33c191e36437b4778a211d3fe-4271045-images-thumbs&n=13");
+            }
+        }
+        catch
+        {
+            // Если не загрузились, возвращаем заглушку
+        }
+
+        return CreatePlaceholderImage();
+    }
+
+    private Image LoadImageFromUrl(string url)
+    {
+        using (WebClient client = new WebClient())
+        {
+            client.Headers.Add("user-agent", "Mozilla/5.0");
+            byte[] data = client.DownloadData(url);
+            using (MemoryStream ms = new MemoryStream(data))
+            {
+                return new Bitmap(ms);
+            }
+        }
+    }
+
+    private Image CreatePlaceholderImage()
+    {
+        Bitmap bmp = new Bitmap(90, 90);
+        using (Graphics g = Graphics.FromImage(bmp))
+        {
+            g.Clear(Color.White);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.DrawString("?", new Font("Arial", 40, FontStyle.Bold),
+                         Brushes.DarkGray, new PointF(25, 15));
+        }
+        return bmp;
+    }
+
+    private void InitializeComponent()
+    {
+        this.lblTitle = new System.Windows.Forms.Label();
+        this.grpCriteria = new System.Windows.Forms.GroupBox();
+        this.nudPassengers = new System.Windows.Forms.NumericUpDown();
+        this.nudDistance = new System.Windows.Forms.NumericUpDown();
+        this.nudWeight = new System.Windows.Forms.NumericUpDown();
+        this.lblPassengers = new System.Windows.Forms.Label();
+        this.lblDistance = new System.Windows.Forms.Label();
+        this.lblWeight = new System.Windows.Forms.Label();
+        this.btnFind = new System.Windows.Forms.Button();
+        this.grpResult = new System.Windows.Forms.GroupBox();
+        this.lblSpecs = new System.Windows.Forms.Label();
+        this.lblMove = new System.Windows.Forms.Label();
+        this.lblInfo = new System.Windows.Forms.Label();
+        this.lblTransportName = new System.Windows.Forms.Label();
+        this.picTransport = new System.Windows.Forms.PictureBox();
+        this.grpCriteria.SuspendLayout();
+        ((System.ComponentModel.ISupportInitialize)(this.nudPassengers)).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)(this.nudDistance)).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)(this.nudWeight)).BeginInit();
+        this.grpResult.SuspendLayout();
+        ((System.ComponentModel.ISupportInitialize)(this.picTransport)).BeginInit();
+        this.SuspendLayout();
+
+        // lblTitle
+        this.lblTitle.AutoSize = true;
+        this.lblTitle.Font = new System.Drawing.Font("Microsoft Sans Serif", 14F, System.Drawing.FontStyle.Bold);
+        this.lblTitle.Location = new System.Drawing.Point(12, 9);
+        this.lblTitle.Name = "lblTitle";
+        this.lblTitle.Size = new System.Drawing.Size(280, 24);
+        this.lblTitle.TabIndex = 0;
+        this.lblTitle.Text = "Система выбора транспорта";
+
+        // grpCriteria
+        this.grpCriteria.Controls.Add(this.nudPassengers);
+        this.grpCriteria.Controls.Add(this.nudDistance);
+        this.grpCriteria.Controls.Add(this.nudWeight);
+        this.grpCriteria.Controls.Add(this.lblPassengers);
+        this.grpCriteria.Controls.Add(this.lblDistance);
+        this.grpCriteria.Controls.Add(this.lblWeight);
+        this.grpCriteria.Location = new System.Drawing.Point(16, 46);
+        this.grpCriteria.Name = "grpCriteria";
+        this.grpCriteria.Size = new System.Drawing.Size(360, 130);
+        this.grpCriteria.TabIndex = 1;
+        this.grpCriteria.TabStop = false;
+        this.grpCriteria.Text = "Параметры доставки";
+
+        // nudWeight
+        this.nudWeight.Maximum = new decimal(new int[] { 2000, 0, 0, 0 });
+        this.nudWeight.Value = new decimal(new int[] { 10, 0, 0, 0 });
+        this.nudWeight.Location = new System.Drawing.Point(150, 25);
+        this.nudWeight.Name = "nudWeight";
+        this.nudWeight.Size = new System.Drawing.Size(120, 20);
+
+        // nudDistance
+        this.nudDistance.Maximum = new decimal(new int[] { 500, 0, 0, 0 });
+        this.nudDistance.Value = new decimal(new int[] { 5, 0, 0, 0 });
+        this.nudDistance.Location = new System.Drawing.Point(150, 55);
+        this.nudDistance.Name = "nudDistance";
+        this.nudDistance.Size = new System.Drawing.Size(120, 20);
+
+        // nudPassengers
+        this.nudPassengers.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+        this.nudPassengers.Location = new System.Drawing.Point(150, 85);
+        this.nudPassengers.Name = "nudPassengers";
+        this.nudPassengers.Size = new System.Drawing.Size(120, 20);
+
+        // lblWeight
+        this.lblWeight.AutoSize = true;
+        this.lblWeight.Location = new System.Drawing.Point(20, 27);
+        this.lblWeight.Name = "lblWeight";
+        this.lblWeight.Size = new System.Drawing.Size(63, 13);
+        this.lblWeight.Text = "Вес (кг):";
+
+        // lblDistance
+        this.lblDistance.AutoSize = true;
+        this.lblDistance.Location = new System.Drawing.Point(20, 57);
+        this.lblDistance.Name = "lblDistance";
+        this.lblDistance.Size = new System.Drawing.Size(85, 13);
+        this.lblDistance.Text = "Расстояние (км):";
+
+        // lblPassengers
+        this.lblPassengers.AutoSize = true;
+        this.lblPassengers.Location = new System.Drawing.Point(20, 87);
+        this.lblPassengers.Name = "lblPassengers";
+        this.lblPassengers.Size = new System.Drawing.Size(110, 13);
+        this.lblPassengers.Text = "Пассажиры (чел.):";
+
+        // btnFind
+        this.btnFind.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(120)))), ((int)(((byte)(215)))));
+        this.btnFind.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+        this.btnFind.Font = new System.Drawing.Font("Microsoft Sans Serif", 10F, System.Drawing.FontStyle.Bold);
+        this.btnFind.ForeColor = System.Drawing.Color.White;
+        this.btnFind.Location = new System.Drawing.Point(16, 182);
+        this.btnFind.Name = "btnFind";
+        this.btnFind.Size = new System.Drawing.Size(360, 40);
+        this.btnFind.TabIndex = 2;
+        this.btnFind.Text = "Найти подходящий транспорт";
+        this.btnFind.UseVisualStyleBackColor = false;
+        this.btnFind.Click += new System.EventHandler(this.btnFind_Click);
+
+        // grpResult - УВЕЛИЧИЛИ ВЫСОТУ
+        this.grpResult.Controls.Add(this.lblSpecs);
+        this.grpResult.Controls.Add(this.lblMove);
+        this.grpResult.Controls.Add(this.lblInfo);
+        this.grpResult.Controls.Add(this.lblTransportName);
+        this.grpResult.Controls.Add(this.picTransport);
+        this.grpResult.Location = new System.Drawing.Point(16, 228);
+        this.grpResult.Name = "grpResult";
+        this.grpResult.Size = new System.Drawing.Size(360, 280); // БЫЛО 220, СТАЛО 280
+        this.grpResult.TabIndex = 3;
+        this.grpResult.TabStop = false;
+        this.grpResult.Text = "Результат";
+
+        // lblTransportName - СДВИНУЛИ ВНИЗ
+        this.lblTransportName.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold);
+        this.lblTransportName.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(120)))), ((int)(((byte)(215)))));
+        this.lblTransportName.Location = new System.Drawing.Point(120, 15); // СДВИНУЛИ ВНИЗ
+        this.lblTransportName.Name = "lblTransportName";
+        this.lblTransportName.Size = new System.Drawing.Size(230, 25);
+        this.lblTransportName.TabIndex = 0;
+        this.lblTransportName.Text = "Введите параметры...";
+
+        // picTransport - УВЕЛИЧИЛИ И СДВИНУЛИ
+        this.picTransport.Location = new System.Drawing.Point(15, 15); // СДВИНУЛИ ВВЕРХ
+        this.picTransport.Name = "picTransport";
+        this.picTransport.Size = new System.Drawing.Size(100, 100); // УВЕЛИЧИЛИ
+        this.picTransport.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
+        this.picTransport.TabIndex = 4;
+        this.picTransport.TabStop = false;
+
+        // lblInfo - СДВИНУЛИ ВНИЗ ПОД КАРТИНКУ
+        this.lblInfo.Location = new System.Drawing.Point(20, 125); // СДВИНУЛИ ПОД КАРТИНКУ
+        this.lblInfo.Name = "lblInfo";
+        this.lblInfo.Size = new System.Drawing.Size(330, 40);
+        this.lblInfo.TabIndex = 1;
+        this.lblInfo.Text = "";
+
+        // lblMove - СДВИНУЛИ ВНИЗ
+        this.lblMove.Location = new System.Drawing.Point(20, 170); // СДВИНУЛИ ВНИЗ
+        this.lblMove.Name = "lblMove";
+        this.lblMove.Size = new System.Drawing.Size(330, 25);
+        this.lblMove.TabIndex = 2;
+        this.lblMove.Text = "";
+
+        // lblSpecs - СДВИНУЛИ ВНИЗ
+        this.lblSpecs.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F);
+        this.lblSpecs.Location = new System.Drawing.Point(20, 200); // СДВИНУЛИ ВНИЗ
+        this.lblSpecs.Name = "lblSpecs";
+        this.lblSpecs.Size = new System.Drawing.Size(330, 70);
+        this.lblSpecs.TabIndex = 3;
+        this.lblSpecs.Text = "";
+
+        // Form1
+        this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+        this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+        this.ClientSize = new System.Drawing.Size(390, 530); // УВЕЛИЧИЛИ ВЫСОТУ
+        this.Controls.Add(this.grpResult);
+        this.Controls.Add(this.btnFind);
+        this.Controls.Add(this.grpCriteria);
+        this.Controls.Add(this.lblTitle);
+        this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
+        this.MaximizeBox = false;
+        this.Name = "Form1";
+        this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+        this.Text = "Transport Selector";
+        this.grpCriteria.ResumeLayout(false);
+        this.grpCriteria.PerformLayout();
+        ((System.ComponentModel.ISupportInitialize)(this.nudPassengers)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.nudDistance)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.nudWeight)).EndInit();
+        this.grpResult.ResumeLayout(false);
+        ((System.ComponentModel.ISupportInitialize)(this.picTransport)).EndInit();
+        this.ResumeLayout(false);
+        this.PerformLayout();
+    }
+}
+    // =====================================================
+    // БИЗНЕС-ЛОГИКА: Классы транспорта
+    // =====================================================
+
+    public abstract class Transport
 {
     public int MaxWeight { get; protected set; }
     public int CountWheel { get; protected set; }
     public int PassengerPlace { get; protected set; }
 
-    // Абстрактные методы которые должны реализовать наследники
     public abstract string Move();
     public abstract string GetInfo();
     public abstract bool CanHandle(int weight, int distance, int passengers);
 }
 
-// Класс Велосипед
 public class Bicycle : Transport
 {
-    // Уникальные свойства велосипеда
     public int CountSpeed { get; private set; }
 
     public Bicycle()
     {
-        // Задаем базовые характеристики
         MaxWeight = 100;
         CountWheel = 2;
         PassengerPlace = 1;
@@ -38,17 +382,14 @@ public class Bicycle : Transport
         return $"Велосипед: Макс. вес - {MaxWeight}кг, Места - {PassengerPlace}, Скорость - {CountSpeed} км/ч";
     }
 
-    // Проверяет может ли велосипед справиться с задачей
     public override bool CanHandle(int weight, int distance, int passengers)
     {
         return weight <= 50 && distance <= 20 && passengers <= 1;
     }
 }
 
-// Класс Автомобиль
 public class Car : Transport
 {
-    // Уникальные свойства автомобиля
     public int HorsePw { get; private set; }
 
     public Car()
@@ -75,10 +416,8 @@ public class Car : Transport
     }
 }
 
-// Класс Дрон
 public class Drone : Transport
 {
-    // Уникальные свойства дрона
     public bool CanFly { get; private set; }
     public int MaxAltitude { get; private set; }
 
@@ -107,26 +446,21 @@ public class Drone : Transport
     }
 }
 
-// Абстрактный создатель транспорта
 public abstract class Creator
 {
-    // Защищенный метод создания (как на диаграмме #)
     protected abstract Transport CreateTransport(int weight, int distance, int passengers);
 
-    // Публичный метод-обертка для вызова из других классов
     public Transport CreateTransportPublic(int weight, int distance, int passengers)
     {
         return CreateTransport(weight, distance, passengers);
     }
 
-    // Публичный метод для доступа из UserTab
     public Transport GetTransport(int weight, int distance, int passengers)
     {
         return CreateTransport(weight, distance, passengers);
     }
 }
 
-// Создатель велосипеда
 public class BicycleCreator : Creator
 {
     protected override Transport CreateTransport(int weight, int distance, int passengers)
@@ -135,7 +469,6 @@ public class BicycleCreator : Creator
     }
 }
 
-// Создатель автомобиля
 public class CarCreator : Creator
 {
     protected override Transport CreateTransport(int weight, int distance, int passengers)
@@ -144,7 +477,6 @@ public class CarCreator : Creator
     }
 }
 
-// Создатель дрона
 public class DroneCreator : Creator
 {
     protected override Transport CreateTransport(int weight, int distance, int passengers)
@@ -153,7 +485,6 @@ public class DroneCreator : Creator
     }
 }
 
-// Фабрика которая выбирает какой транспорт создать по критериям
 public class TransportFactory : Creator
 {
     private BicycleCreator _bicycleCreator = new BicycleCreator();
@@ -162,42 +493,30 @@ public class TransportFactory : Creator
 
     protected override Transport CreateTransport(int weight, int distance, int passengers)
     {
-        Console.WriteLine($"\n=== Анализ критериев ===");
-        Console.WriteLine($"Вес груза: {weight} кг");
-        Console.WriteLine($"Расстояние: {distance} км");
-        Console.WriteLine($"Пассажиров: {passengers}");
-
-        // Логика выбора транспорта
         if (weight <= 5 && distance <= 10 && passengers == 0)
         {
-            Console.WriteLine("Выбран: Дрон");
             return _droneCreator.CreateTransportPublic(weight, distance, passengers);
         }
         else if (weight <= 50 && distance <= 20 && passengers <= 1)
         {
-            Console.WriteLine("Выбран: Велосипед");
             return _bicycleCreator.CreateTransportPublic(weight, distance, passengers);
         }
         else if (weight <= 1500 && passengers <= 5)
         {
-            Console.WriteLine("Выбран: Автомобиль");
             return _carCreator.CreateTransportPublic(weight, distance, passengers);
         }
         else
         {
-            Console.WriteLine("Нет подходящего транспорта!");
             return null;
         }
     }
 }
 
-// Класс для работы с пользователем
 public class UserTab
 {
     private Transport _currentTransport;
     private Creator _creator;
 
-    // Свойства для отображения информации в интерфейсе
     public int CountWheel { get; private set; }
     public int PassengerPlace { get; private set; }
     public int CountSpeed { get; private set; }
@@ -209,7 +528,6 @@ public class UserTab
         _creator = new TransportFactory();
     }
 
-    // Метод ввода критериев и создания транспорта
     public void InputCriteriaAndCreateTransport()
     {
         Console.WriteLine("=== Введите критерии доставки ===\n");
@@ -223,13 +541,11 @@ public class UserTab
         Console.Write("Количество пассажиров: ");
         int passengers = int.Parse(Console.ReadLine());
 
-        // Создаем транспорт через фабрику
         _currentTransport = _creator.GetTransport(weight, distance, passengers);
 
         UpdateProperties();
     }
 
-    // Обновляем свойства интерфейса данными из транспорта
     private void UpdateProperties()
     {
         if (_currentTransport != null)
@@ -252,7 +568,6 @@ public class UserTab
         }
     }
 
-    // Показываем информацию о транспорте пользователю
     public void UseTransport()
     {
         if (_currentTransport != null)
@@ -283,20 +598,16 @@ public class UserTab
             Console.WriteLine("\nНе удалось создать транспорт для указанных критериев");
         }
     }
-}
 
-// Точка входа в программу
-class Program
-{
-    static void Main(string[] args)
+    public Transport GetSelectedTransport(int weight, int distance, int passengers)
     {
-        UserTab userTab = new UserTab();
-
-        // Пользователь вводит данные и получает транспорт
-        userTab.InputCriteriaAndCreateTransport();
-        userTab.UseTransport();
-
-        Console.WriteLine("\nНажмите любую клавишу для выхода...");
-        Console.ReadKey();
+        _currentTransport = _creator.GetTransport(weight, distance, passengers);
+        UpdateProperties();
+        return _currentTransport;
     }
+
+    public int GetCountSpeed() => CountSpeed;
+    public int GetHorsePw() => HorsePw;
+    public bool GetCanFly() => Fly;
+    public int GetMaxAltitude() => (_currentTransport as Drone)?.MaxAltitude ?? 0;
 }
