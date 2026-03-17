@@ -1,31 +1,232 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.9.34622.214
-MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "no_pat_2", "no_pat_2\no_pat_2.vcxproj", "{A4887039-752C-4DAD-85F6-00D8C2CAF60E}"
-EndProject
-Global
-	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|x64 = Debug|x64
-		Debug|x86 = Debug|x86
-		Release|x64 = Release|x64
-		Release|x86 = Release|x86
-	EndGlobalSection
-	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{A4887039-752C-4DAD-85F6-00D8C2CAF60E}.Debug|x64.ActiveCfg = Debug|x64
-		{A4887039-752C-4DAD-85F6-00D8C2CAF60E}.Debug|x64.Build.0 = Debug|x64
-		{A4887039-752C-4DAD-85F6-00D8C2CAF60E}.Debug|x86.ActiveCfg = Debug|Win32
-		{A4887039-752C-4DAD-85F6-00D8C2CAF60E}.Debug|x86.Build.0 = Debug|Win32
-		{A4887039-752C-4DAD-85F6-00D8C2CAF60E}.Release|x64.ActiveCfg = Release|x64
-		{A4887039-752C-4DAD-85F6-00D8C2CAF60E}.Release|x64.Build.0 = Release|x64
-		{A4887039-752C-4DAD-85F6-00D8C2CAF60E}.Release|x86.ActiveCfg = Release|Win32
-		{A4887039-752C-4DAD-85F6-00D8C2CAF60E}.Release|x86.Build.0 = Release|Win32
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {D3DDB8D7-939F-454A-BB96-CC5EB2CCA52C}
-	EndGlobalSection
-EndGlobal
+#pragma execution_character_set("utf-8")
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <commctrl.h>
+#include <iostream>
+#include <vector>
+#include <string>
+#include <memory>
+#include <algorithm>
+#include <iomanip>
+#include <sstream>
+
+#pragma comment(lib, "comctl32.lib")
+
+// --- КЛАСС СОТРУДНИК (Больше не наследуется от Employee) ---
+class Person {
+private:
+    std::string name_, skill_, position_;
+    double salary_;
+
+public:
+    Person(const std::string& n, const std::string& s, const std::string& p, double sal)
+        : name_(n), skill_(s), position_(p), salary_(sal) {}
+
+    double getSalary() const { return salary_; }
+    std::string getName() const { return name_; }
+    std::string getSkill() const { return skill_; }
+    std::string getPosition() const { return position_; }
+};
+
+// --- КЛАСС ОТДЕЛ (Теперь управляет списками явно) ---
+class Department {
+private:
+    std::string name_;
+    std::vector<std::shared_ptr<Person>> staff_;      // Список сотрудников
+    std::vector<std::shared_ptr<Department>> subDepts_; // Список подотделов
+
+public:
+    explicit Department(const std::string& n) : name_(n) {}
+
+    std::string getName() const { return name_; }
+
+    void addPerson(std::shared_ptr<Person> p) { staff_.push_back(p); }
+    void addSubDepartment(std::shared_ptr<Department> d) { subDepts_.push_back(d); }
+
+    // Расчет бюджета (рекурсивно по спискам)
+    double getTotalSalary() const {
+        double total = 0;
+        for (const auto& p : staff_) total += p->getSalary();
+        for (const auto& d : subDepts_) total += d->getTotalSalary();
+        return total;
+    }
+
+    // Поиск сотрудников по навыку
+    void findEmployeesBySkill(const std::string& skill, std::vector<std::shared_ptr<Person>>& result) const {
+        auto toLower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+            return s;
+            };
+        for (const auto& p : staff_) {
+            if (toLower(p->getSkill()).find(toLower(skill)) != std::string::npos) {
+                result.push_back(p);
+            }
+        }
+        for (const auto& d : subDepts_) {
+            d->findEmployeesBySkill(skill, result);
+        }
+    }
+
+    // Печать структуры
+    void printStructure(std::ostringstream& oss, int indent = 0) const {
+        oss << std::string(indent * 2, ' ') << "[Отдел: " << name_ << "]\r\n";
+        for (const auto& p : staff_) {
+            oss << std::string((indent + 1) * 2, ' ') << "Сотрудник: " << p->getName()
+                << " (" << p->getPosition() << ") - $" << p->getSalary() << "\r\n";
+        }
+        for (const auto& d : subDepts_) {
+            d->printStructure(oss, indent + 1);
+        }
+    }
+
+    // Печать бюджета
+    void printBudgetReport(std::ostringstream& oss, int indent = 0) const {
+        oss << std::fixed << std::setprecision(2);
+        oss << std::string(indent * 2, ' ') << "Бюджет '" << name_ << "': $" << getTotalSalary() << "\r\n";
+        for (const auto& d : subDepts_) {
+            d->printBudgetReport(oss, indent + 1);
+        }
+    }
+
+    // Поиск отдела по имени
+    Department* findDepartment(const std::string& targetName) {
+        auto toLower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+            return s;
+            };
+        if (toLower(name_) == toLower(targetName)) return this;
+        for (const auto& d : subDepts_) {
+            Department* found = d->findDepartment(targetName);
+            if (found) return found;
+        }
+        return nullptr;
+    }
+};
+
+// --- LOGIC ---
+std::shared_ptr<Department> rootCompany;
+HWND hOutput, hInput;
+
+std::string processCommand(const std::string& cmd, const std::string& param = "") {
+    std::ostringstream oss;
+    if (cmd == "structure") {
+        oss << "\r\n--- СТРУКТУРА ОРГАНИЗАЦИИ (БЕЗ COMPOSITE) ---\r\n";
+        rootCompany->printStructure(oss);
+    }
+    else if (cmd == "budget") {
+        oss << "\r\n--- ФИНАНСОВЫЙ ОТЧЕТ ---\r\n";
+        rootCompany->printBudgetReport(oss);
+        oss << "--------------------------------------------\r\n";
+        oss << "ОБЩИЕ ЗАТРАТЫ КОМПАНИИ: $" << std::fixed << std::setprecision(2) << rootCompany->getTotalSalary() << "\r\n";
+    }
+    else if (cmd == "add") {
+        std::istringstream iss(param);
+        std::string dName, name, skill, pos;
+        double sal = -1;
+        if (!(iss >> dName >> name >> skill >> pos >> sal)) return "Ошибка! Формат: [Отдел] [Имя] [Скилл] [Должность] [ЗП]\r\n";
+
+        auto target = rootCompany->findDepartment(dName);
+        if (target) {
+            if (sal == 0) {
+                target->addSubDepartment(std::make_shared<Department>(name));
+                oss << "Успех: Создан подотдел '" << name << "'\r\n";
+            }
+            else {
+                target->addPerson(std::make_shared<Person>(name, skill, pos, sal));
+                oss << "Успех: Добавлен сотрудник " << name << " в " << target->getName() << "\r\n";
+            }
+        }
+        else oss << "Ошибка: Отдел '" << dName << "' не найден.\r\n";
+    }
+    else if (cmd == "find") {
+        std::vector<std::shared_ptr<Person>> found;
+        rootCompany->findEmployeesBySkill(param, found);
+        oss << "\r\nПоиск по навыку '" << param << "': найдено " << found.size() << "\r\n";
+        for (auto& p : found) oss << " - " << p->getName() << " (" << p->getSkill() << ")\r\n";
+    }
+    else if (cmd == "help") {
+        oss << "\r\n--- СПРАВКА ---\r\n"
+            << "Структура - Дерево организации\r\n"
+            << "Бюджет - Расчеты по отделам\r\n"
+            << "Добавить - [Отдел] [Имя] [Навык] [Поз] [ЗП]\r\n"
+            << "   (ЗП = 0 создаст новый отдел)\r\n"
+            << "Пример: Маркетинг Реклама - - 0\r\n";
+    }
+    return oss.str();
+}
+
+// Вспомогательные функции для Windows GUI
+std::wstring s2w(const std::string& s) {
+    int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, NULL, 0);
+    std::wstring res(len, 0);
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &res[0], len);
+    return res;
+}
+
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+    case WM_CREATE: {
+        hOutput = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 10, 10, 560, 280, hwnd, NULL, NULL, NULL);
+        hInput = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 10, 300, 400, 25, hwnd, NULL, NULL, NULL);
+        for (int i = 0; i < 5; i++) {
+            const wchar_t* lbl[] = { L"Структура", L"Бюджет", L"Поиск", L"Добавить", L"Помощь" };
+            CreateWindowW(L"BUTTON", lbl[i], WS_CHILD | WS_VISIBLE, 10 + i * 110, 340, 100, 30, hwnd, (HMENU)(UINT_PTR)(i + 1), NULL, NULL);
+        }
+
+        // --- ИНИЦИАЛИЗАЦИЯ ДАННЫХ ---
+        rootCompany = std::make_shared<Department>("Главный_Офис");
+
+        auto itDept = std::make_shared<Department>("IT");
+        itDept->addPerson(std::make_shared<Person>("Виктор", "C++", "Senior", 5000));
+        itDept->addPerson(std::make_shared<Person>("Анна", "Python", "Middle", 4000));
+
+        auto qaDept = std::make_shared<Department>("QA");
+        qaDept->addPerson(std::make_shared<Person>("Денис", "Testing", "Junior", 2500));
+        itDept->addSubDepartment(qaDept);
+
+        auto design = std::make_shared<Department>("Дизайн");
+        design->addPerson(std::make_shared<Person>("Мария", "Figma", "Lead", 4500));
+
+        rootCompany->addSubDepartment(itDept);
+        rootCompany->addSubDepartment(design);
+        rootCompany->addPerson(std::make_shared<Person>("Босс", "Management", "CEO", 15000));
+
+        SetWindowTextW(hOutput, L"Организационная система готова.\r\nНажмите 'Бюджет' для детального отчета.");
+        break;
+    }
+    case WM_COMMAND: {
+        int id = LOWORD(wParam);
+        wchar_t buf[512] = L""; GetWindowTextW(hInput, buf, 512);
+        std::string param;
+        int sz = WideCharToMultiByte(CP_UTF8, 0, buf, -1, NULL, 0, NULL, NULL);
+        if (sz > 1) { param.resize(sz - 1); WideCharToMultiByte(CP_UTF8, 0, buf, -1, &param[0], sz, NULL, NULL); }
+
+        std::string res;
+        if (id == 1) res = processCommand("structure");
+        else if (id == 2) res = processCommand("budget");
+        else if (id == 3) res = processCommand("find", param);
+        else if (id == 4) res = processCommand("add", param);
+        else if (id == 5) res = processCommand("help");
+
+        if (!res.empty()) {
+            std::wstring wres = s2w(res + "\r\n");
+            int len = GetWindowTextLengthW(hOutput);
+            SendMessageW(hOutput, EM_SETSEL, len, len);
+            SendMessageW(hOutput, EM_REPLACESEL, 0, (LPARAM)wres.c_str());
+            SendMessageW(hOutput, EM_SCROLLCARET, 0, 0);
+        }
+        break;
+    }
+    case WM_DESTROY: PostQuitMessage(0); return 0;
+    }
+    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
+int WINAPI wWinMain(HINSTANCE h, HINSTANCE, LPWSTR, int n) {
+    WNDCLASSEXW wc = { sizeof(WNDCLASSEXW), CS_HREDRAW | CS_VREDRAW, WindowProc, 0, 0, h, NULL, LoadCursor(NULL, IDC_ARROW), (HBRUSH)(COLOR_WINDOW + 1), NULL, L"OrgClass", NULL };
+    RegisterClassExW(&wc);
+    HWND hwnd = CreateWindowExW(0, L"OrgClass", L"Система управления (Без Composite)", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 620, 450, NULL, NULL, h, NULL);
+    ShowWindow(hwnd, n);
+    MSG msg; while (GetMessage(&msg, NULL, 0, 0)) { TranslateMessage(&msg); DispatchMessage(&msg); }
+    return (int)msg.wParam;
+}
