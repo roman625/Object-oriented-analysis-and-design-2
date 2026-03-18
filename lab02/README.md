@@ -139,4 +139,4 @@ case 2: // Кнопка "Бюджет"
 ---
 
 ### Диаграмма классов (UML)
-<img width="1052" height="532" alt="image" src="https://github.com/user-attachments/assets/967fa244-a5fa-4840-bde4-237c0050f18c" />
+<img width="1030" height="573" alt="image" src="https://github.com/user-attachments/assets/cd101740-3072-4729-9b5c-5b9571db282c" />
