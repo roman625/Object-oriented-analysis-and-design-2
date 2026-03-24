@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
+#include <functional>
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -17,33 +18,42 @@ using EmployeeList = std::vector<EmployeePtr>;
 
 class Department;
 
-// --- COMPONENT (Интерфейс) ---
+// --- ИНТЕРФЕЙС ---
 class Employee {
 public:
     virtual ~Employee() = default;
     virtual double getSalary() const = 0;
-    virtual double getTotalCost() const = 0;
-    virtual EmployeeList findEmployeesBySkill(const std::string& skill) const = 0;
     virtual std::string getName() const = 0;
     virtual void add(EmployeePtr employee) = 0;
     virtual void printStructure(std::ostringstream& oss, int indent = 0) const = 0;
     virtual void printBudgetReport(std::ostringstream& oss, int indent = 0) const = 0;
+    virtual EmployeeList findEmployeesBySkill(const std::string& skill) const = 0;
     virtual Department* findDepartment(const std::string& name) const = 0;
+    virtual void removeChild(const std::string& name) = 0;
+    virtual EmployeeList getChildren() = 0;
 };
 
-// --- LEAF (Сотрудник) ---
+// --- СОТРУДНИК ---
 class Person : public Employee, public std::enable_shared_from_this<Person> {
 private:
     std::string name_, skill_, position_;
     double salary_;
-
 public:
     Person(const std::string& n, const std::string& s, const std::string& p, double sal)
         : name_(n), skill_(s), position_(p), salary_(sal) {}
 
     double getSalary() const override { return salary_; }
-    double getTotalCost() const override { return salary_; }
     std::string getName() const override { return name_; }
+    void add(EmployeePtr) override {}
+    void removeChild(const std::string&) override {}
+    EmployeeList getChildren() override { return {}; }
+
+    void printStructure(std::ostringstream& oss, int indent = 0) const override {
+        oss << std::string(indent * 2, ' ') << "Сотрудник: " << name_
+            << " [" << position_ << " / Навык: " << skill_ << "] - $" << salary_ << "\r\n";
+    }
+
+    void printBudgetReport(std::ostringstream&, int) const override {}
 
     EmployeeList findEmployeesBySkill(const std::string& skill) const override {
         EmployeeList result;
@@ -56,39 +66,37 @@ public:
         }
         return result;
     }
-
-    void add(EmployeePtr) override {} // У листа нет детей
-
-    void printStructure(std::ostringstream& oss, int indent = 0) const override {
-        oss << std::string(indent * 2, ' ') << "Сотрудник: " << name_
-            << " [" << position_ << "] Навык: " << skill_ << " | $" << salary_ << "\r\n";
-    }
-
-    void printBudgetReport(std::ostringstream&, int) const override {} // Бюджет сотрудника считает отдел
-
     Department* findDepartment(const std::string&) const override { return nullptr; }
 };
 
-// --- COMPOSITE (Отдел) ---
+// --- ОТДЕЛ ---
 class Department : public Employee, public std::enable_shared_from_this<Department> {
 private:
     std::string name_;
     EmployeeList employees_;
-
 public:
     explicit Department(const std::string& n) : name_(n) {}
-
     double getSalary() const override {
         double total = 0;
         for (const auto& e : employees_) total += e->getSalary();
         return total;
     }
-
-    double getTotalCost() const override { return getSalary(); }
     std::string getName() const override { return name_; }
-
     void add(EmployeePtr e) override { if (e) employees_.push_back(e); }
-
+    EmployeeList getChildren() override { return employees_; }
+    void removeChild(const std::string& name) override {
+        employees_.erase(std::remove_if(employees_.begin(), employees_.end(),
+            [&](const EmployeePtr& e) { return e->getName() == name; }), employees_.end());
+    }
+    void printStructure(std::ostringstream& oss, int indent = 0) const override {
+        oss << std::string(indent * 2, ' ') << "Отдел: " << name_ << "\r\n";
+        for (const auto& e : employees_) e->printStructure(oss, indent + 1);
+    }
+    void printBudgetReport(std::ostringstream& oss, int indent = 0) const override {
+        oss << std::fixed << std::setprecision(2);
+        oss << std::string(indent * 2, ' ') << "Бюджет '" << name_ << "': $" << getSalary() << "\r\n";
+        for (const auto& e : employees_) e->printBudgetReport(oss, indent + 1);
+    }
     EmployeeList findEmployeesBySkill(const std::string& skill) const override {
         EmployeeList result;
         for (const auto& e : employees_) {
@@ -97,18 +105,6 @@ public:
         }
         return result;
     }
-
-    void printStructure(std::ostringstream& oss, int indent = 0) const override {
-        oss << std::string(indent * 2, ' ') << "Отдел: " << name_ << "\r\n";
-        for (const auto& e : employees_) e->printStructure(oss, indent + 1);
-    }
-
-    void printBudgetReport(std::ostringstream& oss, int indent = 0) const override {
-        oss << std::fixed << std::setprecision(2);
-        oss << std::string(indent * 2, ' ') << "Бюджет отдела '" << name_ << "': $" << getSalary() << "\r\n";
-        for (const auto& e : employees_) e->printBudgetReport(oss, indent + 1);
-    }
-
     Department* findDepartment(const std::string& name) const override {
         auto toLower = [](std::string s) {
             std::transform(s.begin(), s.end(), s.begin(), ::tolower);
@@ -123,56 +119,9 @@ public:
     }
 };
 
-// --- LOGIC ---
+// --- GUI ---
 EmployeePtr company;
-HWND hOutput, hInput;
-
-std::string processCommand(const std::string& cmd, const std::string& param = "") {
-    std::ostringstream oss;
-    if (cmd == "structure") {
-        oss << "\r\n--- ПОЛНАЯ СТРУКТУРА ОРГАНИЗАЦИИ ---\r\n";
-        company->printStructure(oss);
-    }
-    else if (cmd == "budget") {
-        oss << "\r\n--- ДЕТАЛЬНЫЙ ФИНАНСОВЫЙ ОТЧЕТ ---\r\n";
-        company->printBudgetReport(oss);
-        oss << "--------------------------------------------\r\n";
-        oss << "ОБЩИЕ ЗАТРАТЫ КОМПАНИИ: $" << std::fixed << std::setprecision(2) << company->getSalary() << "\r\n";
-    }
-    else if (cmd == "add") {
-        std::istringstream iss(param);
-        std::string dName, name, skill, pos;
-        double sal = -1;
-        if (!(iss >> dName >> name >> skill >> pos >> sal)) return "Ошибка! Формат: [Отдел] [Имя] [Скилл] [Должность] [ЗП]\r\n";
-
-        auto target = company->findDepartment(dName);
-        if (target) {
-            if (sal == 0) {
-                target->add(std::make_shared<Department>(name));
-                oss << "Успех: Создан новый подотдел '" << name << "'\r\n";
-            }
-            else {
-                target->add(std::make_shared<Person>(name, skill, pos, sal));
-                oss << "Успех: Добавлен сотрудник " << name << " в отдел " << target->getName() << "\r\n";
-            }
-        }
-        else oss << "Ошибка: Отдел '" << dName << "' не найден.\r\n";
-    }
-    else if (cmd == "find") {
-        auto found = company->findEmployeesBySkill(param);
-        oss << "\r\nПоиск по навыку '" << param << "': найдено " << found.size() << "\r\n";
-        for (auto& e : found) oss << " - " << e->getName() << "\r\n";
-    }
-    else if (cmd == "help") {
-        oss << "\r\n--- СПРАВКА ---\r\n"
-            << "Структура - Дерево организации\r\n"
-            << "Бюджет - Затраты по каждому отделу\r\n"
-            << "Добавить - [Отдел] [Имя] [Навык] [Поз] [ЗП]\r\n"
-            << "   (ЗП = 0 создаст новый отдел)\r\n"
-            << "   Пример: Маркетинг Реклама - - 0\r\n";
-    }
-    return oss.str();
-}
+HWND hOutput, hEditDept, hEditName, hEditSkill, hEditPos, hEditSal, hEditTarget;
 
 std::wstring s2w(const std::string& s) {
     int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, NULL, 0);
@@ -181,66 +130,142 @@ std::wstring s2w(const std::string& s) {
     return res;
 }
 
+std::string getHwndText(HWND hwnd) {
+    wchar_t buf[256];
+    GetWindowTextW(hwnd, buf, 256);
+    int sz = WideCharToMultiByte(CP_UTF8, 0, buf, -1, NULL, 0, NULL, NULL);
+    if (sz <= 1) return "";
+    std::string res(sz - 1, 0);
+    WideCharToMultiByte(CP_UTF8, 0, buf, -1, &res[0], sz, NULL, NULL);
+    return res;
+}
+
+void log(const std::string& msg) {
+    std::wstring wmsg = s2w(msg + "\r\n");
+    int len = GetWindowTextLengthW(hOutput);
+    SendMessageW(hOutput, EM_SETSEL, len, len);
+    SendMessageW(hOutput, EM_REPLACESEL, 0, (LPARAM)wmsg.c_str());
+    SendMessageW(hOutput, EM_SCROLLCARET, 0, 0);
+}
+
+// --- СПРАВКА ---
+void handleHelp() {
+    log("=== ПОДСКАЗКИ ПО КОМАНДАМ ===");
+    log("1. Добавление отдела:");
+    log("   - Целевой отдел: [Имя существующего родителя]");
+    log("   - Имя: [Название нового отдела]");
+    log("   - ЗП: 0 (Обязательно)");
+    log("   Пример: Главный_Офис -> Логистика -> 0");
+    log("");
+    log("2. Добавление сотрудника:");
+    log("   - Целевой отдел: [Имя отдела]");
+    log("   - Имя: [ФИО], Навык: [C++], Должность: [Dev]");
+    log("   - ЗП: [Число > 0]");
+    log("   Пример: Разработка -> Иван -> C++ -> Middle -> 3000");
+    log("");
+    log("3. Удаление с переносом:");
+    log("   - Целевой отдел: [Кого удаляем]");
+    log("   - Куда переместить: [Кто примет штат]");
+    log("   Пример: QA -> Разработка (QA удалится, люди уйдут в Разработку)");
+    log("");
+    log("4. Поиск:");
+    log("   - Навык: [Что ищем]");
+    log("   Пример: Введите 'Python' и нажмите Поиск.");
+    log("=============================");
+}
+
+// --- ОБРАБОТЧИКИ ---
+void handleAdd() {
+    std::string dName = getHwndText(hEditDept);
+    std::string name = getHwndText(hEditName);
+    std::string skill = getHwndText(hEditSkill);
+    std::string pos = getHwndText(hEditPos);
+    double sal = std::atof(getHwndText(hEditSal).c_str());
+
+    auto target = company->findDepartment(dName);
+    if (!target) { log("Ошибка: Отдел '" + dName + "' не найден."); return; }
+
+    if (sal <= 0) {
+        target->add(std::make_shared<Department>(name));
+        log("Успех: Создан отдел '" + name + "'");
+    }
+    else {
+        target->add(std::make_shared<Person>(name, skill, pos, sal));
+        log("Успех: Добавлен сотрудник " + name);
+    }
+}
+
+void handleDelete() {
+    std::string delName = getHwndText(hEditDept);
+    std::string targetName = getHwndText(hEditTarget);
+    if (delName == "Главный_Офис" || delName.empty()) { log("Нельзя удалить корень!"); return; }
+    auto delDept = company->findDepartment(delName);
+    auto moveTarget = company->findDepartment(targetName);
+    if (!delDept || !moveTarget) { log("Проверьте имена отделов!"); return; }
+    for (auto& child : delDept->getChildren()) moveTarget->add(child);
+    std::function<void(EmployeePtr)> remover = [&](EmployeePtr curr) {
+        curr->removeChild(delName);
+        for (auto& c : curr->getChildren()) remover(c);
+        };
+    remover(company);
+    log("Отдел '" + delName + "' удален. Сотрудники в '" + targetName + "'");
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_CREATE: {
-        hOutput = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 10, 10, 560, 280, hwnd, NULL, NULL, NULL);
-        hInput = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 10, 300, 400, 25, hwnd, NULL, NULL, NULL);
-        for (int i = 0; i < 5; i++) {
-            const wchar_t* lbl[] = { L"Структура", L"Бюджет", L"Поиск", L"Добавить", L"Помощь" };
-            CreateWindowW(L"BUTTON", lbl[i], WS_CHILD | WS_VISIBLE, 10 + i * 110, 340, 100, 30, hwnd, (HMENU)(UINT_PTR)(i + 1), NULL, NULL);
-        }
+        hOutput = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 10, 10, 610, 180, hwnd, NULL, NULL, NULL);
 
-        // --- ИНИЦИАЛИЗАЦИЯ ПОЛНЫХ ДАННЫХ ---
+        // Поля ввода
+        auto createF = [&](const wchar_t* lbl, int x, int y, int w) {
+            CreateWindowW(L"STATIC", lbl, WS_CHILD | WS_VISIBLE, x, y, w, 18, hwnd, NULL, NULL, NULL);
+            return CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE, x, y + 20, w - 5, 25, hwnd, NULL, NULL, NULL);
+            };
+
+        hEditDept = createF(L"Целевой Отдел:", 10, 200, 140);
+        hEditName = createF(L"Имя / Назв.:", 160, 200, 140);
+        hEditSkill = createF(L"Навык:", 310, 200, 100);
+        hEditPos = createF(L"Должность:", 420, 200, 100);
+        hEditSal = createF(L"ЗП (0=отдел):", 530, 200, 90);
+
+        hEditTarget = createF(L"Куда переместить при удалении:", 10, 255, 300);
+
+        // Кнопки
+        CreateWindowW(L"BUTTON", L"Структура", WS_CHILD | WS_VISIBLE, 10, 310, 90, 30, hwnd, (HMENU)1, NULL, NULL);
+        CreateWindowW(L"BUTTON", L"Бюджет", WS_CHILD | WS_VISIBLE, 105, 310, 90, 30, hwnd, (HMENU)2, NULL, NULL);
+        CreateWindowW(L"BUTTON", L"Поиск", WS_CHILD | WS_VISIBLE, 200, 310, 90, 30, hwnd, (HMENU)3, NULL, NULL);
+        CreateWindowW(L"BUTTON", L"Добавить", WS_CHILD | WS_VISIBLE, 295, 310, 100, 30, hwnd, (HMENU)4, NULL, NULL);
+        CreateWindowW(L"BUTTON", L"Удалить", WS_CHILD | WS_VISIBLE, 400, 310, 100, 30, hwnd, (HMENU)5, NULL, NULL);
+        CreateWindowW(L"BUTTON", L"Помощь", WS_CHILD | WS_VISIBLE, 505, 310, 115, 30, hwnd, (HMENU)6, NULL, NULL);
+
+        // Данные по умолчанию
         company = std::make_shared<Department>("Главный_Офис");
-
-        // IT
-        auto itDept = std::make_shared<Department>("IT_Департамент");
+        auto it = std::make_shared<Department>("IT_Департамент");
         auto dev = std::make_shared<Department>("Разработка");
         dev->add(std::make_shared<Person>("Виктор", "C++", "Senior", 5000));
         dev->add(std::make_shared<Person>("Анна", "Python", "Middle", 4000));
         auto qa = std::make_shared<Department>("QA");
         qa->add(std::make_shared<Person>("Денис", "Testing", "Junior", 2500));
-        itDept->add(dev);
-        itDept->add(qa);
-
-        // Дизайн
-        auto design = std::make_shared<Department>("Дизайн_Студия");
-        design->add(std::make_shared<Person>("Мария", "Figma", "Lead", 4500));
-
-        // Маркетинг
-        auto market = std::make_shared<Department>("Маркетинг");
-        market->add(std::make_shared<Person>("Игорь", "SEO", "Manager", 3000));
-
-        company->add(itDept);
-        company->add(design);
-        company->add(market);
+        it->add(dev); it->add(qa);
+        company->add(it);
         company->add(std::make_shared<Person>("Босс", "Management", "CEO", 15000));
 
-        SetWindowTextW(hOutput, L"Организационная система готова.\r\nНажмите 'Бюджет' для детального отчета.");
+        log("Система готова. Нажмите 'Помощь' для инструкций.");
         break;
     }
     case WM_COMMAND: {
         int id = LOWORD(wParam);
-        wchar_t buf[512] = L""; GetWindowTextW(hInput, buf, 512);
-        std::string param;
-        int sz = WideCharToMultiByte(CP_UTF8, 0, buf, -1, NULL, 0, NULL, NULL);
-        if (sz > 1) { param.resize(sz - 1); WideCharToMultiByte(CP_UTF8, 0, buf, -1, &param[0], sz, NULL, NULL); }
-
-        std::string res;
-        if (id == 1) res = processCommand("structure");
-        else if (id == 2) res = processCommand("budget");
-        else if (id == 3) res = processCommand("find", param);
-        else if (id == 4) res = processCommand("add", param);
-        else if (id == 5) res = processCommand("help");
-
-        if (!res.empty()) {
-            std::wstring wres = s2w(res + "\r\n");
-            int len = GetWindowTextLengthW(hOutput);
-            SendMessageW(hOutput, EM_SETSEL, len, len);
-            SendMessageW(hOutput, EM_REPLACESEL, 0, (LPARAM)wres.c_str());
-            SendMessageW(hOutput, EM_SCROLLCARET, 0, 0);
+        if (id == 1) { std::ostringstream oss; company->printStructure(oss); log(oss.str()); }
+        else if (id == 2) { std::ostringstream oss; company->printBudgetReport(oss); log(oss.str()); }
+        else if (id == 3) {
+            std::string s = getHwndText(hEditSkill);
+            auto f = company->findEmployeesBySkill(s);
+            log("Поиск '" + s + "': " + std::to_string(f.size()) + " найд.");
+            for (auto& e : f) log("- " + e->getName());
         }
+        else if (id == 4) handleAdd();
+        else if (id == 5) handleDelete();
+        else if (id == 6) handleHelp();
         break;
     }
     case WM_DESTROY: PostQuitMessage(0); return 0;
@@ -251,7 +276,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 int WINAPI wWinMain(HINSTANCE h, HINSTANCE, LPWSTR, int n) {
     WNDCLASSEXW wc = { sizeof(WNDCLASSEXW), CS_HREDRAW | CS_VREDRAW, WindowProc, 0, 0, h, NULL, LoadCursor(NULL, IDC_ARROW), (HBRUSH)(COLOR_WINDOW + 1), NULL, L"OrgClass", NULL };
     RegisterClassExW(&wc);
-    HWND hwnd = CreateWindowExW(0, L"OrgClass", L"Система управления (Composite)", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 620, 450, NULL, NULL, h, NULL);
+    HWND hwnd = CreateWindowExW(0, L"OrgClass", L"HR v5.0", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 650, 400, NULL, NULL, h, NULL);
     ShowWindow(hwnd, n);
     MSG msg; while (GetMessage(&msg, NULL, 0, 0)) { TranslateMessage(&msg); DispatchMessage(&msg); }
     return (int)msg.wParam;
