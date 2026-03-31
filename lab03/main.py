@@ -6,7 +6,7 @@ window.title = 'Battle Arena'
 FIELD_BOUNDARY = 24
 
 
-# --- ЮНИТ ---
+#  ЮНИТ 
 class Unit(Entity):
     UNIT_STATS = {
         'melee': {'hp': 100, 'model': 'cube', 'scale': (1.5, 2.5, 1.5)},
@@ -207,7 +207,7 @@ class Unit(Entity):
         self.position.z = clamp(self.position.z, -FIELD_BOUNDARY, FIELD_BOUNDARY)
 
 
-# --- СИСТЕМА ---
+#  СИСТЕМА 
 class BattleSystem:
     def __init__(self):
         self.team1 = []
@@ -288,7 +288,7 @@ def input(key):
             bss.desc_text.enabled = False
 
 
-# --- МИР ---
+#  МИР 
 ground = Entity(model='cube', scale=(50, 0.5, 50), color=color.white,
                 collider='box', y=-0.25, texture='white_cube')
 line = Entity(model='cube', scale=(0.5, 0.1, 50), color=color.black, z=0, y=0.1)
