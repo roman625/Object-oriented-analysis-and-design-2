@@ -7,7 +7,7 @@ window.title = 'Battle Arena'
 FIELD_BOUNDARY = 24
 
 
-# --- ПАТТЕРН СТРАТЕГИЯ ---
+# ПАТТЕРН СТРАТЕГИЯ 
 class IBehavior(ABC):
     @abstractmethod
     def update(self, unit, target): pass
@@ -112,7 +112,7 @@ class HealerBehavior(IBehavior):
                 target.health -= time.dt * 15
 
 
-# --- ЮНИТ ---
+#  ЮНИТ 
 class Unit(Entity):
     UNIT_STATS = {
         'melee': {'hp': 100, 'model': 'cube', 'scale': (1.5, 2.5, 1.5)},
@@ -170,7 +170,7 @@ class Unit(Entity):
         self.max_health = stats['hp']
         self.behavior = self.BEHAVIOR_MAP.get(behavior_type, MeleeBehavior)()
 
-        # ✅ УБРАЛ HP BAR полностью
+       
 
     def _find_valid_position(self, pos, team):
         all_units = bss.team1 + bss.team2
@@ -234,7 +234,7 @@ class Unit(Entity):
         self.position.z = clamp(self.position.z, -FIELD_BOUNDARY, FIELD_BOUNDARY)
 
 
-# --- СИСТЕМА ---
+# СИСТЕМА 
 class BattleSystem:
     def __init__(self):
         self.team1 = []
@@ -315,7 +315,7 @@ def input(key):
             bss.desc_text.enabled = False
 
 
-# --- МИР ---
+#  МИР 
 ground = Entity(model='cube', scale=(50, 0.5, 50), color=color.white,
                 collider='box', y=-0.25, texture='white_cube')
 line = Entity(model='cube', scale=(0.5, 0.1, 50), color=color.black, z=0, y=0.1)
