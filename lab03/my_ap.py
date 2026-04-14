@@ -4,10 +4,13 @@ from abc import ABC, abstractmethod
 app = Ursina()
 window.title = 'Battle Arena'
 
+
+bg_music = Audio('skrillex.mp3', loop=True, autoplay=False, volume=0.5)
+
 FIELD_BOUNDARY = 24
 
 
-# ПАТТЕРН СТРАТЕГИЯ 
+
 class IBehavior(ABC):
     @abstractmethod
     def update(self, unit, target): pass
@@ -43,8 +46,12 @@ class RangedBehavior(IBehavior):
             new_pos.x = clamp(new_pos.x, -FIELD_BOUNDARY, FIELD_BOUNDARY)
             new_pos.z = clamp(new_pos.z, -FIELD_BOUNDARY, FIELD_BOUNDARY)
             unit.position = new_pos
+
         if dist < 15:
-            target.health -= time.dt * 20
+            damage = time.dt * 20
+            if target.unit_type == 'assassin':
+                damage *= 0.3
+            target.health -= damage
 
 
 class TankBehavior(IBehavior):
@@ -65,14 +72,21 @@ class AssassinBehavior(IBehavior):
     def update(self, unit, target):
         if not target: return
         dist = distance(unit.position, target.position)
-        if dist > 2.0:
+
+        if 7.0 < dist < 15.0:
+            unit.look_at(target)
+            speed = 8 * 2.5
+            new_pos = unit.position + unit.forward * time.dt * speed
+        elif dist > 2.0:
             unit.look_at(target)
             new_pos = unit.position + unit.forward * time.dt * 8
-            new_pos.x = clamp(new_pos.x, -FIELD_BOUNDARY, FIELD_BOUNDARY)
-            new_pos.z = clamp(new_pos.z, -FIELD_BOUNDARY, FIELD_BOUNDARY)
-            unit.position = new_pos
         else:
             target.health -= time.dt * 60
+            new_pos = unit.position
+
+        new_pos.x = clamp(new_pos.x, -FIELD_BOUNDARY, FIELD_BOUNDARY)
+        new_pos.z = clamp(new_pos.z, -FIELD_BOUNDARY, FIELD_BOUNDARY)
+        unit.position = new_pos
 
 
 class HealerBehavior(IBehavior):
@@ -112,14 +126,13 @@ class HealerBehavior(IBehavior):
                 target.health -= time.dt * 15
 
 
-#  ЮНИТ 
 class Unit(Entity):
     UNIT_STATS = {
-        'melee': {'hp': 100, 'model': 'cube', 'scale': (1.5, 2.5, 1.5)},
-        'ranged': {'hp': 80, 'model': 'sphere', 'scale': (1.3, 2.0, 1.3)},
-        'tank': {'hp': 200, 'model': 'cube', 'scale': (2.0, 3.0, 2.0)},
-        'assassin': {'hp': 60, 'model': 'sphere', 'scale': (1.0, 2.0, 1.0)},
-        'healer': {'hp': 90, 'model': 'sphere', 'scale': (1.4, 2.3, 1.4)},
+        'melee': {'hp': 100, 'cost': 10, 'model': 'cube', 'scale': (1.5, 2.5, 1.5)},
+        'ranged': {'hp': 80, 'cost': 15, 'model': 'sphere', 'scale': (1.3, 2.0, 1.3)},
+        'tank': {'hp': 200, 'cost': 25, 'model': 'cube', 'scale': (2.0, 3.0, 2.0)},
+        'assassin': {'hp': 60, 'cost': 20, 'model': 'sphere', 'scale': (1.0, 2.0, 1.0)},
+        'healer': {'hp': 90, 'cost': 20, 'model': 'sphere', 'scale': (1.4, 2.3, 1.4)},
     }
 
     BEHAVIOR_MAP = {
@@ -131,10 +144,10 @@ class Unit(Entity):
     }
 
     DESCRIPTIONS = {
-        'melee': 'Воин - сбалансированный боец ближнего боя',
-        'ranged': 'Лучник - атакует с дистанции, мало HP',
-        'tank': 'Танк - много здоровья, медленный',
-        'assassin': 'Убийца - очень быстрый, высокий урон',
+        'melee': 'Воин - сбалансированный боец',
+        'ranged': 'Лучник - атакует с дистанции',
+        'tank': 'Танк - много здоровья',
+        'assassin': 'Убийца - быстрый, прыгает к цели',
         'healer': 'Целитель - лечит союзников',
     }
 
@@ -170,8 +183,6 @@ class Unit(Entity):
         self.max_health = stats['hp']
         self.behavior = self.BEHAVIOR_MAP.get(behavior_type, MeleeBehavior)()
 
-       
-
     def _find_valid_position(self, pos, team):
         all_units = bss.team1 + bss.team2
         min_distance = 2.5
@@ -194,7 +205,6 @@ class Unit(Entity):
 
             if is_valid:
                 break
-
         return pos
 
     def update(self):
@@ -211,10 +221,7 @@ class Unit(Entity):
                 if dist < 2.0 and dist > 0:
                     push_direction = (self.position - unit.position).normalized()
                     push_strength = 2.0 * time.dt
-                    new_pos = self.position + push_direction * push_strength
-                    new_pos.x = clamp(new_pos.x, -FIELD_BOUNDARY, FIELD_BOUNDARY)
-                    new_pos.z = clamp(new_pos.z, -FIELD_BOUNDARY, FIELD_BOUNDARY)
-                    self.position = new_pos
+                    self.position += push_direction * push_strength
 
         enemies = bss.team2 if self.team == 1 else bss.team1
         target = None
@@ -234,24 +241,26 @@ class Unit(Entity):
         self.position.z = clamp(self.position.z, -FIELD_BOUNDARY, FIELD_BOUNDARY)
 
 
-# СИСТЕМА 
 class BattleSystem:
     def __init__(self):
         self.team1 = []
         self.team2 = []
+        self.p1_money = 100
+        self.p2_money = 100
+
         self.current_player = 1
         self.selected_type = 'melee'
         self.battle_started = False
-        self.ui = Text(text='P1: Выберите тип (1-5)',
-                       position=(-0.85, 0.45), scale=1.5, color=color.blue)
+
+        self.ui = Text(text='', position=(-0.85, 0.45), scale=1.5, color=color.blue)
+        self.money_text = Text(text='', position=(-0.85, 0.40), scale=1.2, color=color.gold)
+
         self.ghost = Entity(model='cube', color=color.rgba(0, 255, 0, 150),
                             scale=(1.5, 2.5, 1.5), alpha=0.5)
 
         self.desc_text = Text(
             text='1:Воин  2:Лучник  3:Танк  4:Убийца  5:Целитель',
-            position=(-0.85, 0.38),
-            scale=1.2,
-            color=color.gray
+            position=(-0.85, 0.35), scale=1.1, color=color.gray
         )
 
 
@@ -260,62 +269,69 @@ bss = BattleSystem()
 
 def update():
     if bss.battle_started: return
+
+    money = bss.p1_money if bss.current_player == 1 else bss.p2_money
+    bss.money_text.text = f'Золото: {money}'
+
     if mouse.hovered_entity == ground:
         gp = mouse.world_point
         gx, gz = round(gp.x), round(gp.z)
-        gx = clamp(gx, -FIELD_BOUNDARY, FIELD_BOUNDARY)
-        gz = clamp(gz, -FIELD_BOUNDARY, FIELD_BOUNDARY)
         bss.ghost.position = Vec3(gx, 1.25, gz)
         bss.ghost.enabled = True
 
-        stats = Unit.UNIT_STATS.get(bss.selected_type, Unit.UNIT_STATS['melee'])
+        stats = Unit.UNIT_STATS[bss.selected_type]
         bss.ghost.scale = stats['scale']
 
         zone_ok = (bss.current_player == 1 and gx < -1) or (bss.current_player == 2 and gx > 1)
-        bss.ghost.color = color.rgba(0, 255, 0, 150) if zone_ok else color.rgba(255, 0, 0, 150)
+        money_ok = money >= stats['cost']
+
+        if zone_ok and money_ok:
+            bss.ghost.color = color.rgba(0, 255, 0, 150)
+        else:
+            bss.ghost.color = color.rgba(255, 0, 0, 150)
     else:
         bss.ghost.enabled = False
 
     desc = Unit.DESCRIPTIONS.get(bss.selected_type, '')
-    bss.ui.text = f'P{bss.current_player}: {desc}'
+    cost = Unit.UNIT_STATS[bss.selected_type]['cost']
+    bss.ui.text = f'P{bss.current_player}: {desc} ({cost} золота)'
 
 
 def input(key):
     if bss.battle_started: return
 
-    type_map = {
-        '1': 'melee',
-        '2': 'ranged',
-        '3': 'tank',
-        '4': 'assassin',
-        '5': 'healer',
-    }
-
+    type_map = {'1': 'melee', '2': 'ranged', '3': 'tank', '4': 'assassin', '5': 'healer'}
     if key in type_map:
         bss.selected_type = type_map[key]
 
-    if key == 'left mouse down' and mouse.hovered_entity == ground:
+    if key == 'left mouse down' and bss.ghost.enabled:
         if bss.ghost.color == color.rgba(0, 255, 0, 150):
+            stats = Unit.UNIT_STATS[bss.selected_type]
             u = Unit(bss.ghost.position, bss.current_player, bss.selected_type)
+
             if bss.current_player == 1:
                 bss.team1.append(u)
+                bss.p1_money -= stats['cost']
             else:
                 bss.team2.append(u)
+                bss.p2_money -= stats['cost']
 
     if key == 'enter':
         if bss.current_player == 1:
             bss.current_player = 2
-            bss.ui.text = f'P2: {Unit.DESCRIPTIONS.get(bss.selected_type, "")}'
             bss.ui.color = color.red
         else:
             bss.battle_started = True
+
+            bg_music.play()
+
             bss.ghost.enabled = False
-            bss.ui.text = 'BOY NACHALSYA!'
+            bss.ui.text = 'БОЙ НАЧАЛСЯ!'
             bss.ui.color = color.yellow
             bss.desc_text.enabled = False
+            bss.money_text.enabled = False
 
 
-#  МИР 
 ground = Entity(model='cube', scale=(50, 0.5, 50), color=color.white,
                 collider='box', y=-0.25, texture='white_cube')
 line = Entity(model='cube', scale=(0.5, 0.1, 50), color=color.black, z=0, y=0.1)
@@ -329,8 +345,7 @@ Sky(color=color.cyan)
 AmbientLight(color=color.white)
 DirectionalLight(y=20, rotation=(45, 45, 45), shadows=True)
 
-# КАМЕРА
-camera.position = (0, 50, -300)
+camera.position = (0, 25, -200)
 camera.look_at(ground)
 EditorCamera()
 
