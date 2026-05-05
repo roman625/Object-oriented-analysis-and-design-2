@@ -9,13 +9,13 @@ import java.util.*;
 import java.util.List;
 
 public class SpaceTraderApp {
+    
     public record Position(int x, int y) {
         public double distanceTo(Position other) {
             return Math.sqrt(Math.pow(x - other.x, 2) + Math.pow(y - other.y, 2));
         }
     }
 
-    // Объект-значение для денег (инкапсулирует логику округления и валюты)
     public record Currency(BigDecimal amount) {
         public Currency add(BigDecimal other) { return new Currency(amount.add(other)); }
         public Currency subtract(BigDecimal other) { return new Currency(amount.subtract(other)); }
@@ -23,24 +23,83 @@ public class SpaceTraderApp {
         @Override public String toString() { return String.format("%.2f cr", amount); }
     }
 
-
-    private static final double FUEL_RATE = 0.75; 
-    private static final int MAX_FUEL = 100;
-    private static final BigDecimal WIN_GOAL = new BigDecimal("5000.00");
-    private static final BigDecimal LITER_PRICE = new BigDecimal("2.00");
-    
-    static double fuel = 100;
-    static Currency wallet = new Currency(new BigDecimal("1000.00"));
-    static int cargoCount = 0;
-    static Planet current;
-
     public record Planet(String name, Position pos, int price, Color color) {}
+
+    public static class Ship {
+        private static final Ship INSTANCE = new Ship();
+        
+        private static final double FUEL_RATE = 0.75;
+        private static final int MAX_FUEL = 100;
+        private static final BigDecimal WIN_GOAL = new BigDecimal("5000.00");
+        private static final BigDecimal LITER_PRICE = new BigDecimal("2.00");
+        
+        private double fuel;
+        private Currency wallet;
+        private int cargoCount;
+        
+        private Ship() {
+            this.fuel = MAX_FUEL;
+            this.wallet = new Currency(new BigDecimal("1000.00"));
+            this.cargoCount = 0;
+        }
+        
+        public static Ship getInstance() {
+            return INSTANCE;
+        }
+        
+        public double getFuel() { return fuel; }
+        public Currency getWallet() { return wallet; }
+        public int getCargoCount() { return cargoCount; }
+        public int getMaxFuel() { return MAX_FUEL; }
+        public BigDecimal getWinGoal() { return WIN_GOAL; }
+        public BigDecimal getLiterPrice() { return LITER_PRICE; }
+        public double getFuelRate() { return FUEL_RATE; }
+        
+        public void setFuel(double fuel) { this.fuel = fuel; }
+        public void setWallet(Currency wallet) { this.wallet = wallet; }
+        public void setCargoCount(int cargoCount) { this.cargoCount = cargoCount; }
+        
+        public void addCargo() { cargoCount++; }
+        public void removeCargo() { if (cargoCount > 0) cargoCount--; }
+        public void spendFuel(double amount) { this.fuel -= amount; }
+        public boolean hasEnoughFuel(double amount) { return fuel >= amount; }
+        public boolean canAfford(BigDecimal cost) { return wallet.isGreaterThanOrEqual(cost); }
+        
+        public void refuel(BigDecimal cost) {
+            wallet = wallet.subtract(cost);
+            fuel = MAX_FUEL;
+        }
+        
+        public boolean buyCargo(Planet planet) {
+            BigDecimal price = BigDecimal.valueOf(planet.price);
+            if (canAfford(price)) {
+                wallet = wallet.subtract(price);
+                addCargo();
+                return true;
+            }
+            return false;
+        }
+        
+        public boolean sellCargo(Planet planet) {
+            if (cargoCount > 0) {
+                wallet = wallet.add(BigDecimal.valueOf(planet.price));
+                removeCargo();
+                return true;
+            }
+            return false;
+        }
+        
+        public boolean checkVictory() {
+            return wallet.isGreaterThanOrEqual(WIN_GOAL);
+        }
+    }
 
     private static List<Planet> planets = new ArrayList<>();
     private static DefaultTableModel priceModel;
     private static JLabel statsLabel;
     private static JProgressBar fuelBar;
     private static MapPanel radar;
+    private static Planet current;
 
     public static void main(String[] args) throws Exception {
         initDB();
@@ -68,7 +127,6 @@ public class SpaceTraderApp {
         try (Connection c = DriverManager.getConnection("jdbc:h2:./game_db", "sa", "")) {
             ResultSet rs = c.createStatement().executeQuery("SELECT * FROM planets");
             while(rs.next()) {
-                // Создаем Value Object Position при загрузке
                 Position p = new Position(rs.getInt(2), rs.getInt(3));
                 l.add(new Planet(rs.getString(1), p, rs.getInt(4), 
                       new Color(rs.getInt(5), rs.getInt(6), rs.getInt(7))));
@@ -78,7 +136,7 @@ public class SpaceTraderApp {
     }
 
     static void gui() {
-        JFrame f = new JFrame("STELLAR TERMINAL v11.0 - VALUE OBJECT EDITION");
+        JFrame f = new JFrame("STELLAR TERMINAL v11.0 - SINGLETON EDITION");
         f.setSize(1200, 850);
         f.setDefaultCloseOperation(3);
         f.getContentPane().setBackground(new Color(5, 5, 10));
@@ -90,7 +148,7 @@ public class SpaceTraderApp {
         statsLabel = new JLabel();
         statsLabel.setFont(new Font("Monospaced", Font.BOLD, 22));
         statsLabel.setForeground(Color.CYAN);
-        fuelBar = new JProgressBar(0, MAX_FUEL);
+        fuelBar = new JProgressBar(0, Ship.getInstance().getMaxFuel());
         fuelBar.setPreferredSize(new Dimension(300, 25));
         fuelBar.setStringPainted(true);
         top.add(statsLabel, BorderLayout.WEST);
@@ -122,30 +180,32 @@ public class SpaceTraderApp {
         JButton refuelBtn = new JButton("REFUEL SHIP");
         refuelBtn.setBackground(new Color(50, 50, 150)); refuelBtn.setForeground(Color.WHITE);
         refuelBtn.addActionListener(e -> {
-            BigDecimal needed = BigDecimal.valueOf(MAX_FUEL - fuel);
-            BigDecimal cost = needed.multiply(LITER_PRICE);
-            if (wallet.isGreaterThanOrEqual(cost) && needed.doubleValue() > 0) {
-                wallet = wallet.subtract(cost); fuel = MAX_FUEL; refresh();
+            Ship ship = Ship.getInstance();
+            double needed = ship.getMaxFuel() - ship.getFuel();
+            BigDecimal cost = BigDecimal.valueOf(needed).multiply(ship.getLiterPrice());
+            if (ship.canAfford(cost) && needed > 0) {
+                ship.refuel(cost);
+                refresh();
             }
         });
 
         JButton buyBtn = new JButton("BUY CARGO");
         buyBtn.setBackground(new Color(0, 80, 0)); buyBtn.setForeground(Color.WHITE);
         buyBtn.addActionListener(e -> {
-            BigDecimal p = BigDecimal.valueOf(current.price);
-            if (wallet.isGreaterThanOrEqual(p)) { 
-                wallet = wallet.subtract(p); cargoCount++; refresh(); 
+            Ship ship = Ship.getInstance();
+            if (ship.buyCargo(current)) {
+                refresh();
             }
         });
         
         JButton sellBtn = new JButton("SELL CARGO");
         sellBtn.setBackground(new Color(80, 0, 0)); sellBtn.setForeground(Color.WHITE);
         sellBtn.addActionListener(e -> {
-            if (cargoCount > 0) { 
-                wallet = wallet.add(BigDecimal.valueOf(current.price)); cargoCount--; 
+            Ship ship = Ship.getInstance();
+            if (ship.sellCargo(current)) {
                 refresh();
-                if (wallet.isGreaterThanOrEqual(WIN_GOAL)) {
-                    JOptionPane.showMessageDialog(null, "VICTORY! Balance: " + wallet);
+                if (ship.checkVictory()) {
+                    JOptionPane.showMessageDialog(null, "VICTORY! Balance: " + ship.getWallet());
                     System.exit(0);
                 }
             }
@@ -162,18 +222,23 @@ public class SpaceTraderApp {
 
     static void jump(Planet p) {
         if (p.equals(current)) return;
+        Ship ship = Ship.getInstance();
         double d = current.pos.distanceTo(p.pos);
-        double cost = d * FUEL_RATE;
-        if (fuel >= cost) {
-            fuel -= cost; current = p; refresh();
+        double cost = d * ship.getFuelRate();
+        if (ship.hasEnoughFuel(cost)) {
+            ship.spendFuel(cost);
+            current = p;
+            refresh();
         } else {
             JOptionPane.showMessageDialog(null, "OUT OF FUEL RANGE!");
         }
     }
 
     static void refresh() {
-        statsLabel.setText(String.format("CASH: %s | CARGO: %d | AT: %s", wallet, cargoCount, current.name));
-        fuelBar.setValue((int)fuel);
+        Ship ship = Ship.getInstance();
+        statsLabel.setText(String.format("CASH: %s | CARGO: %d | AT: %s", 
+            ship.getWallet(), ship.getCargoCount(), current.name));
+        fuelBar.setValue((int)ship.getFuel());
         
         priceModel.setRowCount(0);
         Object[] r1 = new Object[6]; r1[0] = "MARKET PRICE";
@@ -182,7 +247,7 @@ public class SpaceTraderApp {
 
         Object[] r2 = new Object[6]; r2[0] = "FUEL TO REACH";
         for(int i=0; i<5; i++) {
-            double c = current.pos.distanceTo(planets.get(i).pos) * FUEL_RATE;
+            double c = current.pos.distanceTo(planets.get(i).pos) * Ship.getInstance().getFuelRate();
             r2[i+1] = (int)c + " L";
         }
         priceModel.addRow(r2);
